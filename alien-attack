@@ -1,0 +1,745 @@
+"""
+Author = James Aliev
+Title: AlienAttack
+Description: This program is a game(made using pygame), specifically a game inspired by Alien Invaders. It has the shooting,
+random alien generation, random health generation, and score keeping. Game speed increases as more points are scored.
+The game comes with a spectacular 8-bit soundtrack, and 8-bit sounds corresponding to most in-game actions. Hope you
+enjoy the game. I am planning to bring updates to the game throughout the summer on my website
+"https://james-aliev.itch.io/alien-attack".
+"""
+
+# importing modules, and other scripts used for the game
+import pygame, sys, random
+from pygame.locals import *
+from pygame.sprite import Sprite
+
+# initialize pygame, game name, and display size
+pygame.init()
+pygame.display.set_caption('Alien Attack')
+screen = pygame.display.set_mode((640, 640), 0, 32)
+
+# set different sizes of 8-bit fonts
+font = pygame.font.Font('fonts/8-bit.otf', 48)
+small_font = pygame.font.Font('fonts/8-bit.otf', 30)
+super_small_font = pygame.font.Font('fonts/8-bit.otf', 24)
+game_over_font = pygame.font.Font('fonts/Evil.ttf', 48)
+small_game_over_font = pygame.font.Font('fonts/GameOver.ttf', 30)
+title_font = pygame.font.Font('fonts/Title.ttf', 72)
+
+# set colours for later health and shield bar use
+RED = (255, 0, 0)
+GREEN = (0, 255, 0)
+BLUE = (122,197,205)
+DARK_BLUE = (18,26,43)
+
+# create a score dictionary
+score_dic = {'score':0, 'old_score':0}
+
+# start a clock
+mainClock = pygame.time.Clock()
+
+# create a ship class
+class Ship(pygame.sprite.Sprite):
+    def __init__(self, ai_settings, ship_screen):
+        """Initialize the ship and set its starting position."""
+
+        pygame.sprite.Sprite.__init__(self)
+        self.screen = ship_screen
+        self.ai_settings = ai_settings
+
+        # Load the ship image and get its rect
+        self.image = pygame.image.load('images/ship.png')
+        self.image = pygame.transform.scale(self.image, (50,50))
+        self.rect = self.image.get_rect()
+        self.radius = 25
+        self.screen_rect = ship_screen.get_rect()
+
+        # Start the ship at the bottom middle of the screen
+        self.rect.centerx = self.screen_rect.centerx
+        self.rect.bottom = self.screen_rect.bottom
+
+        # Store a decimal value for the ship's center
+        self.center = float(self.rect.centerx)
+
+        # Creating a movement flag
+        self.moving_right = False
+        self.moving_left = False
+
+
+    def update(self):
+        """Updating the ship's position based on a movement flag defined previously."""
+
+        if self.moving_right and self.rect.right < self.screen_rect.right:
+            self.center += self.ai_settings.ship_speed_factor
+        if self.moving_left and self.rect.left > 0:
+            self.center -= self.ai_settings.ship_speed_factor
+
+        # update the rect object
+        self.rect.centerx = self.center
+
+    def blitme(self):
+        """Draw the ship at its current location."""
+
+        self.screen.blit(self.image, self.rect)
+
+# create a bullet class
+class Bullet(Sprite):
+    """Initialize the bullet and set its starting position."""
+
+    def __init__(self, ai_settings, bullet_screen, ship):
+        super(Bullet, self).__init__()
+        self.screen = bullet_screen
+
+        self.rect = pygame.Rect(0, 0, ai_settings.bullet_width, ai_settings.bullet_height)
+        self.rect.centerx = ship.rect.centerx
+        self.rect.top = ship.rect.top
+
+        self.y = float(self.rect.y)
+
+        self.colour = ai_settings.bullet_colour
+        self.speed_factor = ai_settings.bullet_speed_factor
+
+    def draw_bullet(self):
+        """Drawing the bullet on screen"""
+
+        pygame.draw.rect(self.screen, self.colour, self.rect)
+
+    def update(self):
+        """Updating the bullets position, and destroying it after it leaves the screen."""
+
+        self.y -= self.speed_factor
+        self.rect.y = self.y
+        if self.rect.bottom < 0:
+            self.kill()
+
+# create a powerup class
+class Powerup(pygame.sprite.Sprite):
+    """Initialize the powerup and get its starting position"""
+    def __init__(self, ai_settings, powerup_screen):
+
+        pygame.sprite.Sprite.__init__(self)
+        self.screen = powerup_screen
+        self.ai_settings = ai_settings
+
+        self.image = pygame.image.load('images/Cherry.png')
+        self.image = pygame.transform.scale(self.image, (50,50))
+        self.rect = self.image.get_rect()
+        self.radius = int(self.rect.width / 2)
+        self.rect.x = random.randrange(0, 640 - self.rect.width)
+        self.rect.y = random.randrange(-1000, -999)
+        self.speedy = random.randrange(1, 3)
+
+    def update(self):
+        """Update the location of the powerup."""
+
+        self.rect.y += self.speedy
+        if self.rect.top > 650:
+            self.rect.x = random.randrange(0, 640 - self.rect.width)
+            self.rect.y = random.randrange(-200, -100)
+            self.speedy = random.randrange(1, 3)
+
+# create a border class
+class Border(pygame.sprite.Sprite):
+    def __init__(self, border_screen):
+        """Initialize the border, set its color, size and position."""
+
+        pygame.sprite.Sprite.__init__(self)
+        self.screen = border_screen
+
+        self.image = pygame.Surface((640, 1))
+        self.image.fill(DARK_BLUE)
+
+        self.rect = self.image.get_rect()
+        self.screen_rect = border_screen.get_rect()
+
+        self.rect.centerx = self.screen_rect.centerx
+        self.rect.bottom = self.screen_rect.bottom
+
+        self.center = float(self.rect.centerx)
+
+    def update(self):
+        """Update the border."""
+
+        self.rect.centerx = self.center
+
+    def blitme(self):
+        """Display the border on screen."""
+
+        self.screen.blit(self.image, self.rect)
+
+# create an alien class
+class Alien(pygame.sprite.Sprite):
+    def __init__(self, ai_settings, alien_screen):
+        """Initialize the alien and get its starting position"""
+
+        # initialize the sprite
+        pygame.sprite.Sprite.__init__(self)
+        self.screen = alien_screen
+        self.ai_settings = ai_settings
+
+        # load the alien's image and get its rect
+        self.image = pygame.image.load('images/Alien.png')
+        self.image = pygame.transform.scale(self.image, (50,50))
+        self.rect = self.image.get_rect()
+
+        # set the radius of the alien
+        self.radius = int(self.rect.width / 2)
+
+        # set the range at which the alien can spawn at
+        self.rect.x = random.randrange(0, 640 - self.rect.width)
+        self.rect.y = random.randrange(-200, -100)
+
+        # set alien speed from a range of 2 to 3
+        self.speedy = random.randrange(2, 3)
+
+    # define alien update function
+    def update(self):
+        """Update the aliens and their positions on screen."""
+
+        self.rect.y += self.speedy
+        if self.rect.top > 650:
+            self.rect.x = random.randrange(0, 640 - self.rect.width)
+            self.rect.y = random.randrange(-200, -100)
+            self.speedy = random.randrange(2, 3)
+
+# define a function that will draw text on screen
+def draw_text(text, any_font, colour, surface, x, y):
+    """Draws text on screen, with conditions such as, text, colour, and (x,y) co-ordinates"""
+
+    textobj = any_font.render(text, 1, colour)
+    textrect = textobj.get_rect()
+    textrect.topleft = (x, y)
+    surface.blit(textobj, textrect)
+
+def play_sound(sound, volume):
+    """Initialize, load, set_volume for sounds, and play them."""
+
+    # initialize music player
+    pygame.mixer.init()
+
+    # load the sound
+    pygame.mixer.music.load(sound)
+
+    # set the volume
+    pygame.mixer.music.set_volume(volume)
+
+    # play the sound
+    pygame.mixer.music.play()
+
+def check_events(ai_settings, main_screen, ship, bullets):
+    """Respond to key presses and mouse inputs/events."""
+
+    # check for pygame events
+    for event in pygame.event.get():
+        # check for quitting
+        if event.type == pygame.QUIT:
+            # quit pygame and system
+            pygame.quit()
+            sys.exit()
+        # check for key presses
+        elif event.type == pygame.KEYDOWN:
+            check_keydown_events(event, ai_settings, main_screen, ship, bullets)
+        # check for key releases
+        elif event.type == pygame.KEYUP:
+            check_keyup_events(event, ship)
+
+def check_keydown_events(event, ai_settings, main_screen, ship, bullets):
+    """Moves ship accordingly to keys pressed, and fires bullets if space is pressed."""
+
+    if event.key == pygame.K_RIGHT:
+        # move the ship to the right
+        ship.moving_right = True
+    elif event.key == pygame.K_LEFT:
+        # move the ship to the left
+        ship.moving_left = True
+    elif event.key == pygame.K_SPACE:
+        new_bullet = Bullet(ai_settings, main_screen, ship)
+
+        # play bullet sound
+        play_sound("sounds/Laser.wav", 0.1)
+
+        # add bullets to group
+        bullets.add(new_bullet)
+
+def check_keyup_events(event, ship):
+    """Stops moving ship when key is released."""
+    if event.key == pygame.K_RIGHT:
+        # stop moving right
+        ship.moving_right = False
+    elif event.key == pygame.K_LEFT:
+        # stop moving left
+        ship.moving_left = False
+
+def update_screen(bullets):
+    """"Update the bullets on screen."""
+    for bullet in bullets.sprites():
+        bullet.draw_bullet()
+
+    # refresh the screen, so that the most recent draw screen is visible
+    pygame.display.flip()
+
+class Settings:
+    """A class to store all settings for Alien Attack."""
+
+    def __init__(self):
+        """Initialize the game's settings."""
+        # Screen settings
+        self.screen_width = 640
+        self.screen_height = 640
+        self.ship_speed_factor = 4
+        self.bullet_speed_factor = 7
+        self.bullet_width = 4
+        self.bullet_height = 25
+        self.bullet_colour = 255, 0, 0
+
+def main_menu():
+    """create and run the main menu screen, with buttons and desired graphics"""
+
+    # initialize the pygame mixer, load the song, and play it
+    pygame.mixer.init()
+    pygame.mixer.music.load("sounds/MenuSong.mp3")
+    pygame.mixer.Channel(0).set_volume(0.03)
+    pygame.mixer.Channel(0).play(pygame.mixer.Sound('sounds/MenuSong.mp3'), loops=-1)
+
+    click = None
+    while True:
+
+        # load and draw the background image.
+        bkgd = pygame.image.load("images/Main_Menu_Space.jpg")
+        bkgd = pygame.transform.scale(bkgd, (640, 640))
+        screen.blit(bkgd, (0, 0))
+
+        # Draw the Main Menu text on the main screen
+        draw_text('Alien Attack', title_font, (255, 105, 180), screen, 160, 20)
+        draw_text('Main Menu', font, (255, 255, 255), screen, 210, 100)
+
+        # get the position of the mouse in x and y points
+        mouseX, mouseY = pygame.mouse.get_pos()
+
+        # define a rectangle for the start button
+        button_1 = pygame.Rect(220, 300, 200, 50)
+
+        # define a rectangle for the instructions button
+        button_2 = pygame.Rect(220, 370, 200, 50)
+
+        # define a rectangle for the controls button
+        button_3 = pygame.Rect(220, 440, 200, 50)
+
+        # check for collisions for all 3 buttons
+        if button_1.collidepoint((mouseX, mouseY)):
+            if click:
+                # delay the game function
+                pygame.time.wait(10)
+                # run the main game function
+                run_game()
+
+        if button_2.collidepoint((mouseX, mouseY)):
+            if click:
+                # play menu select sound
+                play_sound("sounds/MenuSelect.wav", 0.1)
+
+                instructions()
+
+        if button_3.collidepoint((mouseX, mouseY)):
+            if click:
+                # play menu select sound
+                play_sound("sounds/MenuSelect.wav", 0.1)
+
+                controls()
+
+        # drawing the start button
+        pygame.draw.rect(screen, (75, 37, 109), button_1)
+        # drawing the instructions button
+        pygame.draw.rect(screen, (75, 37, 109), button_2)
+        # drawing the controls button
+        pygame.draw.rect(screen, (75, 37, 109), button_3)
+
+        # drawing the text for the button
+        draw_text('Start!', small_font, (255, 105, 180), screen, 277.5, 305)
+        draw_text('Instructions', small_font, (255, 105, 180), screen, 230, 375)
+        draw_text('Controls', small_font, (255, 105, 180), screen, 255, 445)
+
+        click = None
+        # check for key presses and quitting
+        for event in pygame.event.get():
+            # check if user quits
+            if event.type == pygame.QUIT:
+                # quit pygame and system
+                pygame.quit()
+                sys.exit()
+            # check for key presses
+            if event.type == KEYDOWN:
+                # check if the key pressed was the escape key
+                if event.key == pygame.K_ESCAPE:
+                    # quit pygame and system
+                    pygame.quit()
+                    sys.exit()
+            # check if key press is a mouse key press
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:
+                    click = True
+
+        # update the main display
+        pygame.display.update()
+
+def instructions():
+    """Instructions section of the main menu."""
+    running = True
+    while running:
+        # load, transform and display the background image
+        bkgd1 = pygame.image.load("images/Main_Menu_Space.jpg")
+        bkgd1 = pygame.transform.scale(bkgd1, (640, 640))
+        screen.blit(bkgd1, (0, 0))
+
+        # load, transform and display the supporting background image
+        bkgd2 = pygame.image.load("images/SpaceBackground.png")
+        bkgd2 = pygame.transform.scale(bkgd2, (615, 500))
+        screen.blit(bkgd2, (12, 97))
+
+        # load, transform and display the backwards arrow image
+        arrow = pygame.image.load("images/BackwardsArrow.png")
+        arrow = pygame.transform.scale(arrow, (60, 60))
+        screen.blit(arrow, (10, 10))
+
+        # draw text in support of the escape image
+        draw_text('esc', super_small_font, (255, 105, 180), screen, 21, 57.5)
+
+        # draw the text for the title 'Instructions' in the menu
+        draw_text('Instructions', small_font, (255, 105, 180), screen, 230, 20)
+
+        # draw the main instructions for the game
+        draw_text('Kill as many ships as possible and don’t die.', super_small_font, (255,255,0), screen, 62, 100)
+        draw_text('If an alien gets past your ship, it will do damage', super_small_font, (255,255,0), screen, 42, 140)
+        draw_text('to your total HP, if an alien hits you, you will die', super_small_font, (255,255,0), screen, 42, 180)
+        draw_text('You get 200 HP total', super_small_font, (255, 255, 0), screen, 202, 220)
+        draw_text('Hit a cherry with your ship for 25 HP, or 25 Shield', super_small_font, (255, 255, 0), screen, 17, 260)
+        draw_text('You can have a maximum of 200 Shield', super_small_font, (255, 255, 0), screen, 92, 300)
+        draw_text('Each alien you kill is worth 50 points', super_small_font, (255, 255, 0), screen, 102, 340)
+        draw_text('For every 200 points that you score', super_small_font, (255, 255, 0), screen, 102, 380)
+        draw_text('the speed of the game will increase', super_small_font, (255, 255, 0), screen, 102, 420)
+        draw_text('by a factor of 20%', super_small_font, (255, 255, 0), screen, 222, 460)
+        draw_text('Remember have fun...', game_over_font, (255, 0, 0), screen, 102, 500)
+
+        # check for quitting and key presses
+        for event in pygame.event.get():
+            # check if user tries to quit
+            if event.type == pygame.QUIT:
+                # quit pygame and system
+                pygame.quit()
+                sys.exit()
+            # check if user click a button
+            if event.type == pygame.KEYDOWN:
+                # check if the button pressed is the escape key
+                if event.key == pygame.K_ESCAPE:
+                    play_sound("sounds/MenuSelect.wav", 0.1)
+
+                    # stop running instructions function
+                    running = False
+
+        # update the main display
+        pygame.display.update()
+
+def controls():
+    """Controls section of the main menu."""
+    running = True
+    while running:
+
+        # load, transform, and display the background image
+        bkgd = pygame.image.load("images/Main_Menu_Space.jpg")
+        bkgd = pygame.transform.scale(bkgd, (640, 640))
+        screen.blit(bkgd, (0, 0))
+
+        # load, transform, and display the controls image
+        keyboard = pygame.image.load("images/KeyboardControls.png")
+        keyboard = pygame.transform.scale(keyboard, (600, 300))
+        screen.blit(keyboard, (20, 160))
+
+        # load, transform, and display the backwards arrow
+        arrow = pygame.image.load("images/BackwardsArrow.png")
+        arrow = pygame.transform.scale(arrow, (60, 60))
+        screen.blit(arrow, (10, 10))
+
+        # draw text in support of the escape image
+        draw_text('esc', super_small_font, (255, 105, 180), screen, 21, 57.5)
+
+        # draw the text for the title 'Controls' in the menu
+        draw_text('Controls', small_font, (255, 105, 180), screen, 260, 20)
+
+        # check for quitting and key presses
+        for event in pygame.event.get():
+            # check if user tries to quit
+            if event.type == pygame.QUIT:
+                # quit pygame and system
+                pygame.quit()
+                sys.exit()
+            # check if user click a button
+            if event.type == pygame.KEYDOWN:
+                # check if that button is the escape key
+                if event.key == pygame.K_ESCAPE:
+                    play_sound("sounds/MenuSelect.wav", 0.1)
+
+                    # stop running the controls function
+                    running = False
+
+        # update the main display
+        pygame.display.update()
+
+# defining game over screen
+def show_go_screen():
+    """Display game over screen, and check for key presses, to begin new game."""
+    # initialize game_screen size
+    game_screen = pygame.display.set_mode((640, 640))
+    # load and play game over song
+    pygame.mixer.init()
+    pygame.mixer.music.load("sounds/Game Over.ogg")
+    pygame.mixer.Channel(0).set_volume(0.1)
+    pygame.mixer.Channel(0).play(pygame.mixer.Sound('sounds/Game Over.ogg'), loops=-1)
+
+    # draw game over font
+    draw_text("Game   Over.", game_over_font, (255,0,0), screen, 200, 100)
+    draw_text("Our     world     depends     on     you!", small_game_over_font, (255, 105, 180), screen, 130, 210)
+    draw_text("Stay     Determined     Player.", small_game_over_font, (255, 105, 180), screen, 140, 300)
+    draw_text("Don't     Give     Up.", small_game_over_font, (106, 13, 173), screen, 220, 380)
+    draw_text("Press   any   key   to   begin.", small_game_over_font, (255, 105, 180), screen, 150, 460)
+
+    # load broken heart image, and draw it on screen
+    heart = pygame.image.load("images/Broken Heart.png")
+    heart = pygame.transform.scale(heart, (40, 40))
+    screen.blit(heart, (310, 540))
+
+    # display score on screen
+    score_font = pygame.font.Font('fonts/Evil.ttf', 24)
+    text = score_font.render("Score: " + str(score_dic["score"]), True, (255, 255, 255))
+    game_screen.blit(text, (10, 10))
+
+    # update screen
+    pygame.display.flip()
+
+    # set waiting variable to True
+    waiting = True
+    # start a while loop
+    while waiting:
+        # start a for loop to detect quitting and key presses
+        for event in pygame.event.get():
+            # check for quitting the game
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+            # wait for 0.5 seconds
+            pygame.time.wait(500)
+            # check for key presses
+            if event.type == pygame.KEYUP:
+                waiting = False
+                score_dic["score"] = 0
+                score_dic["old_score"] = 0
+                run_game()
+
+# define the main game loop
+def run_game():
+    """Main game loop, where most of the games functions are used.
+    Display is set, sprites are spawned, and all collisions are checked for."""
+    # initialize pygame, settings, and screen
+    pygame.init()
+    ai_settings =  Settings()
+    game_screen = pygame.display.set_mode((ai_settings.screen_width, ai_settings.screen_height))
+
+    # set pygame display caption
+    pygame.display.set_caption("Alien Attack")
+
+    # set width and height of the screen
+    W, H = 640, 640
+
+    # draw the display
+    display = pygame.display.set_mode((W, H))
+
+    # set background
+    bkgd = pygame.image.load("images/SpaceBackground.png").convert()
+
+    # load music, set its volume, and play it
+    pygame.mixer.music.load("sounds/Starbound.mp3")
+    pygame.mixer.Channel(0).set_volume(0.08)
+    # play music until game over
+    pygame.mixer.Channel(0).play(pygame.mixer.Sound('sounds/Starbound.mp3'), loops=-1)
+
+    # create all sprite group, aliens group, power-ups group, bullets group
+    all_sprites = pygame.sprite.Group()
+    aliens = pygame.sprite.Group()
+    power_ups = pygame.sprite.Group()
+    bullets = pygame.sprite.Group()
+    ship = Ship(ai_settings, game_screen)
+    border = Border(game_screen)
+
+    # add ship and border to all sprites group
+    all_sprites.add(ship)
+    all_sprites.add(border)
+
+    # spawn 2 aliens
+    for a in range(2):
+        a = Alien(ai_settings, game_screen)
+        all_sprites.add(a)
+        aliens.add(a)
+
+    # spawn 1 power-up
+    for a in range(1):
+        p = Powerup(ai_settings, game_screen)
+        all_sprites.add(p)
+        power_ups.add(p)
+
+    # setting mandatory global variables, score, old_score, tick, life, shield, and y value of the screen
+    tick = 100
+    life = 200
+    shield = 0
+    y_pos = 0
+    game_over = False
+
+    # check for collisions, and other events in the game and update the screen elements accordingly
+    while True:
+        # initialize the main game clock
+        clock_object = pygame.time.Clock()
+        clock_object.tick(tick)
+
+        # check for key presses and other main events
+        check_events(ai_settings, game_screen, ship, bullets)
+
+        # update the ship, bullets, and all sprites on the screen
+        ship.update()
+        bullets.update()
+        all_sprites.update()
+
+        # check for collisions between the aliens and bullets
+        hits = pygame.sprite.groupcollide(aliens, bullets, True, True)
+        for _ in hits:
+
+            # initialize the music player
+            play_sound("sounds/Blip.wav", 0.05)
+
+            # add another alien for each that is killed
+            a = Alien(ai_settings, game_screen)
+            all_sprites.add(a)
+            aliens.add(a)
+
+            # add 50 points to the variable score
+            score_dic["score"] += 50
+
+        # display score on screen
+        score_font = pygame.font.Font('fonts/8-bit.otf', 24)
+        text = score_font.render("Score: " + str(score_dic["score"]), True, (255, 255, 255))
+        game_screen.blit(text, (10, 10))
+
+        # updating tick speed based on score
+        if score_dic["score"] - score_dic["old_score"] == 200:
+            score_dic["old_score"] = score_dic["score"]
+            tick += 20
+
+        # setting the font for the Difficulty Multiplier score
+        DM_font = pygame.font.Font('fonts/8-bit.otf', 18)
+
+        # determining the text to write on screen
+        text = DM_font.render("Difficulty  Multiplier: " + "x" + str(tick/100), True, (255, 255, 255))
+
+        # making the text appear on the screen
+        game_screen.blit(text, (10, 40))
+
+        # updating all sprites
+        all_sprites.draw(game_screen)
+
+        # checking for collisions between the aliens and ship
+        hits = pygame.sprite.spritecollide(ship, aliens, False)
+        if hits:
+            # load and blit explosion images on screen
+            img = pygame.image.load('images/regularExplosion01.png',
+                                    'images/regularExplosion02.png')
+            img = pygame.transform.scale(img, (60,60))
+            screen.blit(img, ship)
+
+            # wait 100 milliseconds
+            pygame.time.wait(100)
+
+            # set game_over to true
+            game_over = True
+
+        # checking for collisions between the player and the cherry(healing) power-up
+        hits = pygame.sprite.spritecollide(ship, power_ups, True)
+        if hits:
+            # load and play power-up blip sound
+            play_sound("sounds/Power-up.wav", 0.1)
+
+            # if the player has lost health add extra life points
+            if life < 200:
+                life += 25
+                if life > 200:
+                    life = 200
+
+            # make sure that shield never exceeds a value of 200
+            elif life == 200 and shield < 200:
+                shield += 25
+                if shield > 200:
+                    shield = 200
+
+            # set a small delay
+            pygame.time.wait(10)
+
+            # add new power-up sprites to group
+            p = Powerup(ai_settings, game_screen)
+            all_sprites.add(p)
+            power_ups.add(p)
+
+        # checking for collisions between the Aliens, and the border behind the player
+        hits = pygame.sprite.spritecollide(border, aliens, False)
+        if hits:
+            if shield > 0 and life == 200:
+                shield -= 1
+
+            elif shield == 0:
+                life -= 1
+                if life <= 0:
+                    break
+
+        # health bar using the life value
+        pygame.draw.rect(display, RED, (430, 10, 200, 20))
+        pygame.draw.rect(display, GREEN, (430, 10, life, 20))
+
+        # drawing the shield bar with rectangles
+        pygame.draw.rect(display, (128, 128, 128), (430, 40, 200, 20))
+        pygame.draw.rect(display, BLUE, (430, 40, shield, 20))
+
+        # writing the text for Health Points on screen, and the HP value
+        HP_font = pygame.font.Font('fonts/Fipps-Regular.otf', 10)
+
+        # determining the text to write on screen
+        text = HP_font.render("HP: " + str(life), True, (0, 0, 0))
+
+        # making the text appear on the screen
+        game_screen.blit(text, (435, 9))
+
+        # setting the font for the shield value
+        shield_font = pygame.font.Font('fonts/Fipps-Regular.otf', 10)
+
+        # determining the text to write on screen
+        text = shield_font.render("Shield: " + str(shield), True, (0, 0, 0))
+
+        # making the text appear on the screen
+        game_screen.blit(text, (435, 39))
+
+        # updating the screen
+        update_screen(bullets)
+
+        # scrolling the background
+        rel_y = y_pos % bkgd.get_rect().height
+        display.blit(bkgd, (0, rel_y - bkgd.get_rect().height))
+        if rel_y < H:
+            display.blit(bkgd, (0, rel_y))
+        y_pos += 0.7
+
+        # check for player death
+        if game_over:
+            # wait 1 second
+            pygame.time.wait(1000)
+            # display game over screen
+            show_go_screen()
+
+# run main_menu
+main_menu()
+# run the game
+run_game()
