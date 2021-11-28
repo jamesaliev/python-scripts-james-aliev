@@ -1,0 +1,90 @@
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+
+class getCrypto:
+    def __init__(self, crypto, webDriverPath="./chromedriver", browser=None, browserHide=False):
+        self.crypto = crypto
+        self.webDriverPath = webDriverPath
+        self.browser = browser
+        self.browserHide = browserHide
+
+    def run(self):
+        # url of the page we want to scrape
+        url = "https://coinmarketcap.com/"
+        # set up
+        caps = DesiredCapabilities().CHROME
+        # caps["pageLoadStrategy"] = "normal"  #  complete
+        caps["pageLoadStrategy"] = "eager"  # interactive
+        # caps["pageLoadStrategy"] = "none"   #  undefined
+
+        chromeOptions = webdriver.chrome.options.Options()
+        if self.browserHide == True:
+            chromeOptions.headless = True
+        if self.browser != None:
+            chromeOptions.binary_location = self.browser
+
+        # initiating the webdriver. Parameter includes the path of the webdriver.
+        self.driver = webdriver.Chrome(desired_capabilities=caps, executable_path=self.webDriverPath,
+                                       options=chromeOptions)
+        self.driver.get(url)
+
+        WebDriverWait(self.driver, 20).until(EC.element_to_be_clickable((By.CSS_SELECTOR,
+        "#__next > div > div.main-content > div.sc-1ojz83d-0.fLfsZi > div:nth-child(2) > div > nav > div > div:nth-child(2) > svg"))).click()  # found element inside of copy js
+        search = self.driver.find_element_by_xpath(
+            "/html/body/div/div/div[1]/div[1]/div[2]/div/div[2]/div/div[1]/div[1]/input")
+        search.send_keys(self.crypto)
+        search.send_keys(Keys.RETURN)
+
+    def getValue(self):
+        try:
+            return WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "priceValue___11gHJ"))
+            ).text
+        except:
+            return None
+
+    def getCoin(self):
+        try:
+            return WebDriverWait(self.driver, 10).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "nameSymbol___1arQV"))
+            ).text
+        except:
+            return None
+
+    def quit(self):
+        self.driver.quit()
+
+print("Prices are calculated in USD:")
+
+if __name__ == '__main__':
+    scraper = getCrypto(crypto="ethereum", browserHide=False)  # sets scraper information
+    scraper.run()  # run it
+    print(scraper.getCoin())  # Get name of coin scraping
+    print(scraper.getValue())  # Get value of coin scraping
+    scraper.quit()  # Stops the scraper
+
+if __name__ == '__main__':
+    scraper = getCrypto(crypto="litecoin", browserHide=False)  # sets scraper information
+    scraper.run()  # run it
+    print(scraper.getCoin())  # Get name of coin scraping
+    print(scraper.getValue())  # Get value of coin scraping
+    scraper.quit()  # Stops the scraper
+
+if __name__ == '__main__':
+    scraper = getCrypto(crypto="bitcoin", browserHide=False)  # sets scraper information
+    scraper.run()  # run it
+    print(scraper.getCoin())  # Get name of coin scraping
+    print(scraper.getValue())  # Get value of coin scraping
+    scraper.quit()  # Stops the scraper
+
+if __name__ == '__main__':
+    scraper = getCrypto(crypto="dogecoin", browserHide=False)  # sets scraper information
+    scraper.run()  # run it
+    print(scraper.getCoin())  # Get name of coin scraping
+    print(scraper.getValue())  # Get value of coin scraping
+    scraper.quit()  # Stops the scraper
