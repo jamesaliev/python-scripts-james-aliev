@@ -6839,9 +6839,9 @@ ZZZ.TO'''
 
 client_id='FYDfVntMlaS2I_ajVLXlWg'
 client_secret='NT5c-cVThJl-oYK28geROwEZC_ETwg'
-user_agent='pc:webscraper.wsb:v1.0 by (/u/jimjam2004)'
-username='jimjam2004'
-password='B3g3m0t!'
+user_agent='pc:webscraper.wsb:v1.0 by (/u/USERNAME_HERE)'
+username='ENTER_REDDIT_USERNAME_HERE'
+password='ENTER_REDDIT_PASSWORD_HERE'
 
 stock_symbols = stock_names.split("\n")
 
